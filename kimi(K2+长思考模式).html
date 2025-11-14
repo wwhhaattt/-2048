@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2048变体 - 闯关版</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background-color: #faf8ef;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        .container {
+            text-align: center;
+            max-width: 500px;
+        }
+        
+        h1 {
+            color: #776e65;
+            font-size: 48px;
+            margin: 0 0 10px 0;
+        }
+        
+        .info-panel {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        
+        .info-box {
+            background-color: #bbada0;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        
+        .game-container {
+            position: relative;
+            background-color: #bbada0;
+            border-radius: 10px;
+            padding: 15px;
+            width: 400px;
+            height: 400px;
+            margin: 0 auto;
+        }
+        
+        .grid-container {
+            position: absolute;
+            z-index: 1;
+        }
+        
+        .grid-row {
+            display: flex;
+        }
+        
+        .grid-cell {
+            width: 85px;
+            height: 85px;
+            margin: 5px;
+            background-color: #cdc1b4;
+            border-radius: 5px;
+        }
+        
+        .tile-container {
+            position: absolute;
+            z-index: 2;
+        }
+        
+        .tile {
+            position: absolute;
+            width: 85px;
+            height: 85px;
+            margin: 5px;
+            background-color: #eee4da;
+            border-radius: 5px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: 24px;
+            color: #776e65;
+            transition: all 0.15s ease-in-out;
+        }
+        
+        .tile-2 { background-color: #eee4da; }
+        .tile-4 { background-color: #ede0c8; }
+        .tile-8 { background-color: #f2b179; color: #f9f6f2; }
+        .tile-16 { background-color: #f59563; color: #f9f6f2; }
+        .tile-32 { background-color: #f67c5f; color: #f9f6f2; }
+        .tile-64 { background-color: #f65e3b; color: #f9f6f2; }
+        .tile-128 { background-color: #edcf72; color: #f9f6f2; font-size: 20px; }
+        .tile-256 { background-color: #edcc61; color: #f9f6f2; font-size: 20px; }
+        .tile-512 { background-color: #edc850; color: #f9f6f2; font-size: 20px; }
+        .tile-1024 { background-color: #edc53f; color: #f9f6f2; font-size: 18px; }
+        .tile-2048 { background-color: #edc22e; color: #f9f6f2; font-size: 18px; }
+        .tile-4096 { background-color: #3c3a32; color: #f9f6f2; font-size: 18px; }
+        .tile-8192 { background-color: #2e2c25; color: #f9f6f2; font-size: 18px; }
+        
+        .controls {
+            margin-top: 20px;
+        }
+        
+        .btn {
+            background-color: #8f7a66;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        
+        .btn:hover {
+            background-color: #9f8a76;
+        }
+        
+        .message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            font-size: 24px;
+            z-index: 1000;
+            display: none;
+        }
+        
+        .message.show {
+            display: block;
+        }
+        
+        .instructions {
+            margin-top: 20px;
+            color: #776e65;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>2048变体 - 闯关版</h1>
+        
+        <div class="info-panel">
+            <div class="info-box">
+                关卡: <span id="level">1</span>/8
+            </div>
+            <div class="info-box">
+                目标: <span id="target">16</span>
+            </div>
+            <div class="info-box">
+                分数: <span id="score">0</span>
+            </div>
+        </div>
+        
+        <div class="game-container">
+            <div class="grid-container" id="grid-container"></div>
+            <div class="tile-container" id="tile-container"></div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn" onclick="game.init()">新游戏</button>
+        </div>
+        
+        <div class="instructions">
+            <p><strong>游戏规则：</strong></p>
+            <p>1. 不同数字可以合成，相同数字不能合成</p>
+            <p>2. 滑动时优先合成方向最远的相邻数字</p>
+            <p>3. 合成后的数不能再参与本次其他合成</p>
+            <p>4. 达到关卡目标后清除所有≥目标的数字</p>
+        </div>
+    </div>
+    
+    <div class="message" id="message"></div>
+    
+    <script>
+        const game = {
+            size: 4,
+            board: [],
+            score: 0,
+            level: 1,
+            maxLevel: 8,
+            target: 16,
+            hasMoved: false,
+            
+            init() {
+                this.board = Array(this.size).fill().map(() => Array(this.size).fill(0));
+                this.score = 0;
+                this.level = 1;
+                this.updateTarget();
+                this.addNewTile();
+                this.addNewTile();
+                this.render();
+                this.updateUI();
+            },
+            
+            updateTarget() {
+                this.target = Math.pow(2, this.level + 3);
+                document.getElementById('target').textContent = this.target;
+            },
+            
+            addNewTile() {
+                const emptyCells = [];
+                for (let i = 0; i < this.size; i++) {
+                    for (let j = 0; j < this.size; j++) {
+                        if (this.board[i][j] === 0) {
+                            emptyCells.push({x: i, y: j});
+                        }
+                    }
+                }
+                
+                if (emptyCells.length > 0) {
+                    const cell = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+                    this.board[cell.x][cell.y] = Math.random() < 0.9 ? 2 : 4;
+                }
+            },
+            
+            render() {
+                const gridContainer = document.getElementById('grid-container');
+                const tileContainer = document.getElementById('tile-container');
+                
+                gridContainer.innerHTML = '';
+                tileContainer.innerHTML = '';
+                
+                // 渲染背景网格
+                for (let i = 0; i < this.size; i++) {
+                    const row = document.createElement('div');
+                    row.className = 'grid-row';
+                    for (let j = 0; j < this.size; j++) {
+                        const cell = document.createElement('div');
+                        cell.className = 'grid-cell';
+                        row.appendChild(cell);
+                    }
+                    gridContainer.appendChild(row);
+                }
+                
+                // 渲染方块
+                for (let i = 0; i < this.size; i++) {
+                    for (let j = 0; j < this.size; j++) {
+                        if (this.board[i][j] !== 0) {
+                            const tile = document.createElement('div');
+                            tile.className = `tile tile-${this.board[i][j]}`;
+                            tile.style.left = `${j * 95}px`;
+                            tile.style.top = `${i * 95}px`;
+                            tile.textContent = this.board[i][j];
+                            tileContainer.appendChild(tile);
+                        }
+                    }
+                }
+            },
+            
+            updateUI() {
+                document.getElementById('level').textContent = this.level;
+                document.getElementById('score').textContent = this.score;
+            },
+            
+            move(direction) {
+                this.hasMoved = false;
+                let boardChanged = false;
+                
+                if (direction === 'left') {
+                    for (let i = 0; i < this.size; i++) {
+                        if (this.mergeLeft(i)) boardChanged = true;
+                    }
+                } else if (direction === 'right') {
+                    for (let i = 0; i < this.size; i++) {
+                        if (this.mergeRight(i)) boardChanged = true;
+                    }
+                } else if (direction === 'up') {
+                    for (let j = 0; j < this.size; j++) {
+                        if (this.mergeUp(j)) boardChanged = true;
+                    }
+                } else if (direction === 'down') {
+                    for (let j = 0; j < this.size; j++) {
+                        if (this.mergeDown(j)) boardChanged = true;
+                    }
+                }
+                
+                if (boardChanged) {
+                    this.addNewTile();
+                    this.render();
+                    this.updateUI();
+                    this.checkWin();
+                    this.checkLose();
+                }
+            },
+            
+            mergeLeft(row) {
+                let changed = false;
+                const line = this.board[row].filter(val => val !== 0);
+                const merged = [];
+                let i = 0;
+                
+                while (i < line.length) {
+                    if (i < line.length - 1 && line[i] !== line[i + 1]) {
+                        // 不同数字可以合并
+                        const sum = line[i] + line[i + 1];
+                        merged.push(sum);
+                        this.score += sum;
+                        i += 2;
+                        changed = true;
+                    } else {
+                        merged.push(line[i]);
+                        i++;
+                    }
+                }
+                
+                // 补零
+                while (merged.length < this.size) {
+                    merged.push(0);
+                }
+                
+                if (JSON.stringify(this.board[row]) !== JSON.stringify(merged)) {
+                    this.board[row] = merged;
+                    changed = true;
+                }
+                
+                return changed;
+            },
+            
+            mergeRight(row) {
+                let changed = false;
+                const line = this.board[row].filter(val => val !== 0);
+                const merged = [];
+                let i = line.length - 1;
+                
+                while (i >= 0) {
+                    if (i > 0 && line[i] !== line[i - 1]) {
+                        // 不同数字可以合并
+                        const sum = line[i] + line[i - 1];
+                        merged.unshift(sum);
+                        this.score += sum;
+                        i -= 2;
+                        changed = true;
+                    } else {
+                        merged.unshift(line[i]);
+                        i--;
+                    }
+                }
+                
+                // 补零
+                while (merged.length < this.size) {
+                    merged.unshift(0);
+                }
+                
+                if (JSON.stringify(this.board[row]) !== JSON.stringify(merged)) {
+                    this.board[row] = merged;
+                    changed = true;
+                }
+                
+                return changed;
+            },
+            
+            mergeUp(col) {
+                let changed = false;
+                const line = [];
+                for (let i = 0; i < this.size; i++) {
+                    if (this.board[i][col] !== 0) {
+                        line.push(this.board[i][col]);
+                    }
+                }
+                
+                const merged = [];
+                let i = 0;
+                
+                while (i < line.length) {
+                    if (i < line.length - 1 && line[i] !== line[i + 1]) {
+                        const sum = line[i] + line[i + 1];
+                        merged.push(sum);
+                        this.score += sum;
+                        i += 2;
+                        changed = true;
+                    } else {
+                        merged.push(line[i]);
+                        i++;
+                    }
+                }
+                
+                // 更新列
+                for (let i = 0; i < this.size; i++) {
+                    const newValue = i < merged.length ? merged[i] : 0;
+                    if (this.board[i][col] !== newValue) {
+                        this.board[i][col] = newValue;
+                        changed = true;
+                    }
+                }
+                
+                return changed;
+            },
+            
+            mergeDown(col) {
+                let changed = false;
+                const line = [];
+                for (let i = 0; i < this.size; i++) {
+                    if (this.board[i][col] !== 0) {
+                        line.push(this.board[i][col]);
+                    }
+                }
+                
+                const merged = [];
+                let i = line.length - 1;
+                
+                while (i >= 0) {
+                    if (i > 0 && line[i] !== line[i - 1]) {
+                        const sum = line[i] + line[i - 1];
+                        merged.unshift(sum);
+                        this.score += sum;
+                        i -= 2;
+                        changed = true;
+                    } else {
+                        merged.unshift(line[i]);
+                        i--;
+                    }
+                }
+                
+                // 更新列
+                for (let i = 0; i < this.size; i++) {
+                    const newValue = i < merged.length ? merged[i] : 0;
+                    if (this.board[i][col] !== newValue) {
+                        this.board[i][col] = newValue;
+                        changed = true;
+                    }
+                }
+                
+                return changed;
+            },
+            
+            checkWin() {
+                let foundTarget = false;
+                let clearCount = 0;
+                
+                for (let i = 0; i < this.size; i++) {
+                    for (let j = 0; j < this.size; j++) {
+                        if (this.board[i][j] === this.target) {
+                            foundTarget = true;
+                        }
+                        if (this.board[i][j] >= this.target) {
+                            clearCount++;
+                        }
+                    }
+                }
+                
+                if (foundTarget) {
+                    // 清除所有≥目标的数
+                    for (let i = 0; i < this.size; i++) {
+                        for (let j = 0; j < this.size; j++) {
+                            if (this.board[i][j] >= this.target) {
+                                this.board[i][j] = 0;
+                            }
+                        }
+                    }
+                    
+                    this.showMessage(`恭喜完成第${this.level}关！`);
+                    
+                    setTimeout(() => {
+                        this.level++;
+                        if (this.level > this.maxLevel) {
+                            this.showMessage('恭喜你通关了所有关卡！');
+                            setTimeout(() => this.init(), 3000);
+                        } else {
+                            this.updateTarget();
+                            this.addNewTile();
+                            this.render();
+                            this.updateUI();
+                        }
+                    }, 2000);
+                }
+            },
+            
+            checkLose() {
+                for (let i = 0; i < this.size; i++) {
+                    for (let j = 0; j < this.size; j++) {
+                        if (this.board[i][j] === 0) {
+                            return false;
+                        }
+                    }
+                }
+                
+                this.showMessage('游戏结束！');
+                setTimeout(() => this.init(), 3000);
+                return true;
+            },
+            
+            showMessage(text) {
+                const message = document.getElementById('message');
+                message.textContent = text;
+                message.classList.add('show');
+                setTimeout(() => {
+                    message.classList.remove('show');
+                }, 2000);
+            }
+        };
+        
+        // 键盘控制
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                game.move('left');
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                game.move('right');
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                game.move('up');
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                game.move('down');
+            }
+        });
+        
+        // 初始化游戏
+        game.init();
+    </script>
+</body>
+</html>

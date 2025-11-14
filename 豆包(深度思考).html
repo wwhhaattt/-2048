@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>数字融合 - 创新版2048</title>
+  
+  <!-- 外部资源 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  
+  <!-- Tailwind 配置 -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#4F46E5',
+            secondary: '#10B981',
+            accent: '#F59E0B',
+            dark: '#1E293B',
+            light: '#F8FAFC',
+            // 数字方块颜色
+            num2: '#EFF6FF',
+            num4: '#DBEAFE',
+            num8: '#BFDBFE',
+            num16: '#93C5FD',
+            num32: '#60A5FA',
+            num64: '#3B82F6',
+            num128: '#2563EB',
+            num256: '#1D4ED8',
+            num512: '#1E40AF',
+            num1024: '#1E3A8A',
+            num2048: '#1E293B',
+            numhigher: '#0F172A',
+          },
+          fontFamily: {
+            game: ['"Clear Sans"', 'Helvetica Neue', 'Arial', 'sans-serif'],
+          },
+        },
+      }
+    }
+  </script>
+  
+  <!-- 自定义工具类 -->
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .content-auto {
+        content-visibility: auto;
+      }
+      .tile-shadow {
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      }
+      .game-gradient {
+        background: linear-gradient(135deg, #F8FAFC 0%, #E2E8F0 100%);
+      }
+    }
+  </style>
+  
+  <style>
+    body {
+      touch-action: manipulation;
+      overflow-x: hidden;
+    }
+    
+    .tile {
+      transition: all 0.2s ease;
+    }
+    
+    .tile-new {
+      animation: appear 0.3s ease-in-out;
+    }
+    
+    .tile-merged {
+      animation: merge 0.3s ease-in-out;
+      z-index: 20;
+    }
+    
+    @keyframes appear {
+      0% {
+        opacity: 0;
+        transform: scale(0.8);
+      }
+      100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+    
+    @keyframes merge {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.2); }
+      100% { transform: scale(1); }
+    }
+    
+    .game-board {
+      position: relative;
+      padding: 15px;
+      border-radius: 10px;
+      background-color: #1E293B;
+    }
+    
+    .game-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background-color: rgba(0, 0, 0, 0.7);
+      border-radius: 10px;
+      z-index: 100;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    
+    .game-overlay.active {
+      opacity: 1;
+      pointer-events: all;
+    }
+    
+    .slide-in {
+      animation: slideIn 0.5s ease-out forwards;
+    }
+    
+    @keyframes slideIn {
+      from { transform: translateY(-20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    
+    .pulse {
+      animation: pulse 1.5s infinite;
+    }
+    
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+      100% { transform: scale(1); }
+    }
+  </style>
+</head>
+<body class="font-game min-h-screen flex flex-col items-center justify-start pt-6 pb-12 px-4 game-gradient">
+  <!-- 游戏标题和信息 -->
+  <div class="w-full max-w-md mb-6">
+    <div class="flex justify-between items-center mb-4">
+      <h1 class="text-[clamp(2rem,5vw,3rem)] font-bold text-dark">
+        <span class="text-primary">数字</span>
+        <span class="text-secondary">融合</span>
+      </h1>
+      <div class="flex gap-2">
+        <div class="bg-dark text-white px-3 py-2 rounded-lg text-center">
+          <div class="text-xs uppercase font-semibold text-gray-400">分数</div>
+          <div id="score" class="text-xl font-bold">0</div>
+        </div>
+        <div class="bg-dark text-white px-3 py-2 rounded-lg text-center">
+          <div class="text-xs uppercase font-semibold text-gray-400">关卡</div>
+          <div id="level" class="text-xl font-bold">1</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="bg-white rounded-lg p-4 mb-6 shadow-lg">
+      <div class="text-sm text-gray-600">
+        <p class="mb-2"><strong>当前目标:</strong> 合成 <span id="target-value" class="font-bold text-primary">16</span></p>
+        <p><strong>规则:</strong> 滑动或使用方向键移动数字，<span class="font-semibold">不同数字</span>可合成其和，优先合成最远的数字。</p>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 游戏主容器 -->
+  <div class="relative w-full max-w-md">
+    <!-- 游戏棋盘 -->
+    <div id="game-board" class="game-board aspect-square w-full mb-6">
+      <div id="tiles-container" class="grid grid-cols-4 gap-3 h-full w-full">
+        <!-- 瓷砖将通过JS动态生成 -->
+      </div>
+    </div>
+    
+    <!-- 游戏结束/胜利覆盖层 -->
+    <div id="game-overlay" class="game-overlay">
+      <h2 id="overlay-title" class="text-3xl font-bold text-white mb-4"></h2>
+      <p id="overlay-message" class="text-white text-center mb-6 px-4"></p>
+      <button id="restart-button" class="bg-primary hover:bg-primary/90 text-white font-bold py-3 px-8 rounded-lg transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50">
+        新游戏
+      </button>
+    </div>
+  </div>
+  
+  <!-- 控制按钮 (移动设备) -->
+  <div class="w-full max-w-md mt-6 md:hidden">
+    <div class="flex justify-center mb-2">
+      <button id="up-btn" class="w-16 h-16 bg-dark text-white rounded-lg flex items-center justify-center text-2xl hover:bg-primary transition-colors">
+        <i class="fa fa-arrow-up"></i>
+      </button>
+    </div>
+    <div class="flex justify-center gap-2">
+      <button id="left-btn" class="w-16 h-16 bg-dark text-white rounded-lg flex items-center justify-center text-2xl hover:bg-primary transition-colors">
+        <i class="fa fa-arrow-left"></i>
+      </button>
+      <button id="down-btn" class="w-16 h-16 bg-dark text-white rounded-lg flex items-center justify-center text-2xl hover:bg-primary transition-colors">
+        <i class="fa fa-arrow-down"></i>
+      </button>
+      <button id="right-btn" class="w-16 h-16 bg-dark text-white rounded-lg flex items-center justify-center text-2xl hover:bg-primary transition-colors">
+        <i class="fa fa-arrow-right"></i>
+      </button>
+    </div>
+  </div>
+  
+  <!-- 游戏说明 -->
+  <div class="w-full max-w-md mt-8 text-center text-gray-600 text-sm">
+    <p>滑动屏幕或使用方向键移动数字。合并不同的数字得到它们的和。每关有不同目标，完成所有8关获得胜利！</p>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // 游戏配置
+      const config = {
+        gridSize: 4,
+        startTiles: 2,
+        initialLevel: 1,
+        maxLevel: 8
+      };
+      
+      // 游戏状态
+      let gameState = {
+        grid: [],
+        score: 0,
+        level: config.initialLevel,
+        target: 0,
+        gameOver: false,
+        won: false
+      };
+      
+      // DOM 元素
+      const tilesContainer = document.getElementById('tiles-container');
+      const scoreElement = document.getElementById('score');
+      const levelElement = document.getElementById('level');
+      const targetElement = document.getElementById('target-value');
+      const gameOverlay = document.getElementById('game-overlay');
+      const overlayTitle = document.getElementById('overlay-title');
+      const overlayMessage = document.getElementById('overlay-message');
+      const restartButton = document.getElementById('restart-button');
+      
+      // 控制按钮
+      const upBtn = document.getElementById('up-btn');
+      const downBtn = document.getElementById('down-btn');
+      const leftBtn = document.getElementById('left-btn');
+      const rightBtn = document.getElementById('right-btn');
+      
+      // 初始化游戏
+      function initGame() {
+        // 重置游戏状态
+        gameState.grid = createEmptyGrid();
+        gameState.score = 0;
+        gameState.level = config.initialLevel;
+        gameState.target = calculateTarget(gameState.level);
+        gameState.gameOver = false;
+        gameState.won = false;
+        
+        // 更新UI
+        updateScore();
+        updateLevel();
+        updateTarget();
+        gameOverlay.classList.remove('active');
+        
+        // 添加初始瓷砖
+        for (let i = 0; i < config.startTiles; i++) {
+          addRandomTile();
+        }
+        
+        // 渲染网格
+        renderGrid();
+      }
+      
+      // 创建空网格
+      function createEmptyGrid() {
+        return Array(config.gridSize).fill().map(() => Array(config.gridSize).fill(null));
+      }
+      
+      // 计算目标值
+      function calculateTarget(level) {
+        return Math.pow(2, level + 3);
+      }
+      
+      // 更新分数显示
+      function updateScore() {
+        scoreElement.textContent = gameState.score;
+      }
+      
+      // 更新等级显示
+      function updateLevel() {
+        levelElement.textContent = gameState.level;
+      }
+      
+      // 更新目标值显示
+      function updateTarget() {
+        targetElement.textContent = gameState.target;
+      }
+      
+      // 在随机位置添加随机瓷砖 (2或4)
+      function addRandomTile() {
+        const availableCells = [];
+        
+        // 找到所有空单元格
+        for (let y = 0; y < config.gridSize; y++) {
+          for (let x = 0; x < config.gridSize; x++) {
+            if (gameState.grid[y][x] === null) {
+              availableCells.push({ x, y });
+            }
+          }
+        }
+        
+        // 如果没有空单元格，游戏结束
+        if (availableCells.length === 0) {
+          gameOver();
+          return false;
+        }
+        
+        // 随机选择一个空单元格
+        const cell = availableCells[Math.floor(Math.random() * availableCells.length)];
+        
+        // 90%概率生成2，10%概率生成4
+        const value = Math.random() < 0.9 ? 2 : 4;
+        
+        // 在选中的单元格放置新瓷砖
+        gameState.grid[cell.y][cell.x] = {
+          value,
+          isNew: true,
+          wasMerged: false
+        };
+        
+        return true;
+      }
+      
+      // 渲染网格
+      function renderGrid() {
+        // 清空容器
+        tilesContainer.innerHTML = '';
+        
+        // 渲染每个单元格
+        for (let y = 0; y < config.gridSize; y++) {
+          for (let x = 0; x < config.gridSize; x++) {
+            const cell = document.createElement('div');
+            cell.className = 'bg-gray-700/50 rounded-lg transition-all duration-200';
+            
+            const tile = gameState.grid[y][x];
+            if (tile) {
+              const tileElement = document.createElement('div');
+              
+              // 确定瓷砖的颜色类
+              let colorClass = 'num2';
+              if (tile.value === 4) colorClass = 'num4';
+              else if (tile.value === 8) colorClass = 'num8';
+              else if (tile.value === 16) colorClass = 'num16';
+              else if (tile.value === 32) colorClass = 'num32';
+              else if (tile.value === 64) colorClass = 'num64';
+              else if (tile.value === 128) colorClass = 'num128';
+              else if (tile.value === 256) colorClass = 'num256';
+              else if (tile.value === 512) colorClass = 'num512';
+              else if (tile.value === 1024) colorClass = 'num1024';
+              else if (tile.value === 2048) colorClass = 'num2048';
+              else colorClass = 'numhigher';
+              
+              // 文字颜色（深色方块用白色文字）
+              const textColor = tile.value >= 2048 ? 'text-white' : 'text-gray-800';
+              
+              // 设置瓷砖样式
+              tileElement.className = `tile absolute inset-0 m-auto flex items-center justify-center rounded-lg font-bold transition-all duration-200 ${colorClass} tile-shadow ${tile.isNew ? 'tile-new' : ''} ${tile.wasMerged ? 'tile-merged' : ''}`;
+              
+              // 根据值设置字体大小
+              let fontSize = 'text-2xl';
+              if (tile.value >= 1024) fontSize = 'text-lg';
+              else if (tile.value >= 128) fontSize = 'text-xl';
+              
+              tileElement.innerHTML = `<span class="${fontSize} ${textColor}">${tile.value}</span>`;
+              
+              // 清除临时状态标记
+              tile.isNew = false;
+              tile.wasMerged = false;
+              
+              cell.appendChild(tileElement);
+            }
+            
+            tilesContainer.appendChild(cell);
+          }
+        }
+      }
+      
+      // 处理移动
+      function handleMove(direction) {
+        if (gameState.gameOver || gameState.won) return false;
+        
+        let moved = false;
+        
+        // 根据方向处理移动
+        switch (direction) {
+          case 'up':
+            moved = moveUp();
+            break;
+          case 'down':
+            moved = moveDown();
+            break;
+          case 'left':
+            moved = moveLeft();
+            break;
+          case 'right':
+            moved = moveRight();
+            break;
+        }
+        
+        // 如果有移动，添加新瓷砖并重新渲染
+        if (moved) {
+          addRandomTile();
+          renderGrid();
+          
+          // 检查是否达到目标
+          checkLevelCompletion();
+          
+          // 检查是否游戏结束
+          if (!canMove()) {
+            gameOver();
+          }
+        }
+        
+        return moved;
+      }
+      
+      // 向上移动 - 优先处理最远（底部）的数字
+      function moveUp() {
+        let moved = false;
+        
+        // 对每一列进行处理
+        for (let x = 0; x < config.gridSize; x++) {
+          // 从底部向上处理（最远的先处理）
+          for (let y = config.gridSize - 2; y >= 0; y--) {
+            if (gameState.grid[y][x] === null) continue;
+            
+            let newY = y;
+            // 找到可以移动到的最高位置
+            while (newY > 0 && gameState.grid[newY - 1][x] === null) {
+              newY--;
+            }
+            
+            // 检查是否可以合并（与上方的瓷砖）
+            if (newY > 0 && gameState.grid[newY - 1][x] !== null && 
+                !gameState.grid[newY - 1][x].wasMerged &&
+                gameState.grid[y][x].value !== gameState.grid[newY - 1][x].value) {
+              
+              // 合并瓷砖
+              const mergedValue = gameState.grid[y][x].value + gameState.grid[newY - 1][x].value;
+              gameState.grid[newY - 1][x] = {
+                value: mergedValue,
+                wasMerged: true,
+                isNew: false
+              };
+              gameState.grid[y][x] = null;
+              
+              // 更新分数
+              gameState.score += mergedValue;
+              updateScore();
+              
+              moved = true;
+            } else if (newY !== y) {
+              // 只是移动，不合并
+              gameState.grid[newY][x] = gameState.grid[y][x];
+              gameState.grid[y][x] = null;
+              moved = true;
+            }
+          }
+        }
+        
+        return moved;
+      }
+      
+      // 向下移动 - 优先处理最远（顶部）的数字
+      function moveDown() {
+        let moved = false;
+        
+        // 对每一列进行处理
+        for (let x = 0; x < config.gridSize; x++) {
+          // 从上到下处理（最远的先处理）
+          for (let y = 1; y < config.gridSize; y++) {
+            if (gameState.grid[y][x] === null) continue;
+            
+            let newY = y;
+            // 找到可以移动到的最低位置
+            while (newY < config.gridSize - 1 && gameState.grid[newY + 1][x] === null) {
+              newY++;
+            }
+            
+            // 检查是否可以合并（与下方的瓷砖）
+            if (newY < config.gridSize - 1 && gameState.grid[newY + 1][x] !== null && 
+                !gameState.grid[newY + 1][x].wasMerged &&
+                gameState.grid[y][x].value !== gameState.grid[newY + 1][x].value) {
+              
+              // 合并瓷砖
+              const mergedValue = gameState.grid[y][x].value + gameState.grid[newY + 1][x].value;
+              gameState.grid[newY + 1][x] = {
+                value: mergedValue,
+                wasMerged: true,
+                isNew: false
+              };
+              gameState.grid[y][x] = null;
+              
+              // 更新分数
+              gameState.score += mergedValue;
+              updateScore();
+              
+              moved = true;
+            } else if (newY !== y) {
+              // 只是移动，不合并
+              gameState.grid[newY][x] = gameState.grid[y][x];
+              gameState.grid[y][x] = null;
+              moved = true;
+            }
+          }
+        }
+        
+        return moved;
+      }
+      
+      // 向左移动 - 优先处理最远（右侧）的数字
+      function moveLeft() {
+        let moved = false;
+        
+        // 对每一行进行处理
+        for (let y = 0; y < config.gridSize; y++) {
+          // 从右到左处理（最远的先处理）
+          for (let x = config.gridSize - 2; x >= 0; x--) {
+            if (gameState.grid[y][x] === null) continue;
+            
+            let newX = x;
+            // 找到可以移动到的最左位置
+            while (newX > 0 && gameState.grid[y][newX - 1] === null) {
+              newX--;
+            }
+            
+            // 检查是否可以合并（与左边的瓷砖）
+            if (newX > 0 && gameState.grid[y][newX - 1] !== null && 
+                !gameState.grid[y][newX - 1].wasMerged &&
+                gameState.grid[y][x].value !== gameState.grid[y][newX - 1].value) {
+              
+              // 合并瓷砖
+              const mergedValue = gameState.grid[y][x].value + gameState.grid[y][newX - 1].value;
+              gameState.grid[y][newX - 1] = {
+                value: mergedValue,
+                wasMerged: true,
+                isNew: false
+              };
+              gameState.grid[y][x] = null;
+              
+              // 更新分数
+              gameState.score += mergedValue;
+              updateScore();
+              
+              moved = true;
+            } else if (newX !== x) {
+              // 只是移动，不合并
+              gameState.grid[y][newX] = gameState.grid[y][x];
+              gameState.grid[y][x] = null;
+              moved = true;
+            }
+          }
+        }
+        
+        return moved;
+      }
+      
+      // 向右移动 - 优先处理最远（左侧）的数字
+      function moveRight() {
+        let moved = false;
+        
+        // 对每一行进行处理
+        for (let y = 0; y < config.gridSize; y++) {
+          // 从左到右处理（最远的先处理）
+          for (let x = 1; x < config.gridSize; x++) {
+            if (gameState.grid[y][x] === null) continue;
+            
+            let newX = x;
+            // 找到可以移动到的最右位置
+            while (newX < config.gridSize - 1 && gameState.grid[y][newX + 1] === null) {
+              newX++;
+            }
+            
+            // 检查是否可以合并（与右边的瓷砖）
+            if (newX < config.gridSize - 1 && gameState.grid[y][newX + 1] !== null && 
+                !gameState.grid[y][newX + 1].wasMerged &&
+                gameState.grid[y][x].value !== gameState.grid[y][newX + 1].value) {
+              
+              // 合并瓷砖
+              const mergedValue = gameState.grid[y][x].value + gameState.grid[y][newX + 1].value;
+              gameState.grid[y][newX + 1] = {
+                value: mergedValue,
+                wasMerged: true,
+                isNew: false
+              };
+              gameState.grid[y][x] = null;
+              
+              // 更新分数
+              gameState.score += mergedValue;
+              updateScore();
+              
+              moved = true;
+            } else if (newX !== x) {
+              // 只是移动，不合并
+              gameState.grid[y][newX] = gameState.grid[y][x];
+              gameState.grid[y][x] = null;
+              moved = true;
+            }
+          }
+        }
+        
+        return moved;
+      }
+      
+      // 检查是否完成当前关卡
+      function checkLevelCompletion() {
+        let hasTarget = false;
+        
+        // 检查是否有达到目标值的瓷砖
+        for (let y = 0; y < config.gridSize; y++) {
+          for (let x = 0; x < config.gridSize; x++) {
+            if (gameState.grid[y][x] && gameState.grid[y][x].value === gameState.target) {
+              hasTarget = true;
+              break;
+            }
+          }
+          if (hasTarget) break;
+        }
+        
+        if (hasTarget) {
+          // 清除所有大于等于目标值的瓷砖
+          for (let y = 0; y < config.gridSize; y++) {
+            for (let x = 0; x < config.gridSize; x++) {
+              if (gameState.grid[y][x] && gameState.grid[y][x].value >= gameState.target) {
+                gameState.grid[y][x] = null;
+              }
+            }
+          }
+          
+          // 检查是否是最后一关
+          if (gameState.level === config.maxLevel) {
+            // 游戏胜利
+            gameState.won = true;
+            showOverlay('恭喜！', '你已通过所有关卡，获得胜利！');
+          } else {
+            // 进入下一关
+            gameState.level++;
+            gameState.target = calculateTarget(gameState.level);
+            updateLevel();
+            updateTarget();
+            
+            // 添加两个新瓷砖
+            addRandomTile();
+            addRandomTile();
+            
+            // 显示关卡提升消息
+            showTemporaryMessage(`进入第 ${gameState.level} 关！目标: ${gameState.target}`);
+          }
+        }
+      }
+      
+      // 显示临时消息
+      function showTemporaryMessage(message) {
+        const messageElement = document.createElement('div');
+        messageElement.className = 'fixed top-4 left-1/2 transform -translate-x-1/2 bg-accent text-white px-6 py-3 rounded-lg font-bold z-50 slide-in';
+        messageElement.textContent = message;
+        
+        document.body.appendChild(messageElement);
+        
+        // 2秒后移除消息
+        setTimeout(() => {
+          messageElement.style.opacity = '0';
+          messageElement.style.transform = 'translate(-50%, -20px)';
+          messageElement.style.transition = 'all 0.3s ease';
+          
+          setTimeout(() => {
+            document.body.removeChild(messageElement);
+          }, 300);
+        }, 2000);
+      }
+      
+      // 检查是否还有可能的移动
+      function canMove() {
+        // 检查是否有空单元格
+        for (let y = 0; y < config.gridSize; y++) {
+          for (let x = 0; x < config.gridSize; x++) {
+            if (gameState.grid[y][x] === null) {
+              return true;
+            }
+          }
+        }
+        
+        // 检查是否有可以合并的瓷砖
+        for (let y = 0; y < config.gridSize; y++) {
+          for (let x = 0; x < config.gridSize; x++) {
+            const value = gameState.grid[y][x].value;
+            
+            // 检查右侧
+            if (x < config.gridSize - 1 && gameState.grid[y][x + 1].value !== value) {
+              return true;
+            }
+            
+            // 检查下方
+            if (y < config.gridSize - 1 && gameState.grid[y + 1][x].value !== value) {
+              return true;
+            }
+          }
+        }
+        
+        return false;
+      }
+      
+      // 游戏结束
+      function gameOver() {
+        gameState.gameOver = true;
+        showOverlay('游戏结束', '你没有可移动的步数了。再试一次？');
+      }
+      
+      // 显示覆盖层
+      function showOverlay(title, message) {
+        overlayTitle.textContent = title;
+        overlayMessage.textContent = message;
+        gameOverlay.classList.add('active');
+      }
+      
+      // 处理键盘输入
+      function handleKeydown(e) {
+        switch (e.key) {
+          case 'ArrowUp':
+            e.preventDefault();
+            handleMove('up');
+            break;
+          case 'ArrowDown':
+            e.preventDefault();
+            handleMove('down');
+            break;
+          case 'ArrowLeft':
+            e.preventDefault();
+            handleMove('left');
+            break;
+          case 'ArrowRight':
+            e.preventDefault();
+            handleMove('right');
+            break;
+        }
+      }
+      
+      // 处理触摸滑动
+      let touchStartX = 0;
+      let touchStartY = 0;
+      
+      function handleTouchStart(e) {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+      }
+      
+      function handleTouchEnd(e) {
+        if (!touchStartX || !touchStartY) return;
+        
+        const touchEndX = e.changedTouches[0].clientX;
+        const touchEndY = e.changedTouches[0].clientY;
+        
+        const dx = touchEndX - touchStartX;
+        const dy = touchEndY - touchStartY;
+        
+        // 确定滑动方向（优先考虑距离更长的方向）
+        if (Math.abs(dx) > Math.abs(dy)) {
+          // 水平滑动
+          if (dx > 50) {
+            handleMove('right');
+          } else if (dx < -50) {
+            handleMove('left');
+          }
+        } else {
+          // 垂直滑动
+          if (dy > 50) {
+            handleMove('down');
+          } else if (dy < -50) {
+            handleMove('up');
+          }
+        }
+        
+        // 重置触摸起始位置
+        touchStartX = 0;
+        touchStartY = 0;
+      }
+      
+      // 事件监听
+      document.addEventListener('keydown', handleKeydown);
+      tilesContainer.addEventListener('touchstart', handleTouchStart);
+      document.addEventListener('touchend', handleTouchEnd);
+      restartButton.addEventListener('click', initGame);
+      
+      // 控制按钮事件
+      upBtn.addEventListener('click', () => handleMove('up'));
+      downBtn.addEventListener('click', () => handleMove('down'));
+      leftBtn.addEventListener('click', () => handleMove('left'));
+      rightBtn.addEventListener('click', () => handleMove('right'));
+      
+      // 初始化游戏
+      initGame();
+    });
+  </script>
+</body>
+</html>
